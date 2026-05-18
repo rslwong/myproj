@@ -52,7 +52,9 @@ class PhoneConf {
     // peerId → MediaStreamAudioSourceNode
     this.audioSourceNodes = new Map();
 
-    this.myName    = '';
+    this.myName     = '';
+    this._chatOpen  = false;
+    this._unreadCnt = 0;
     this.isMuted   = false;
     this.isSpeaker = true;   // true = loudspeaker, false = earpiece/headset
 
@@ -80,6 +82,11 @@ class PhoneConf {
     $('speaker-btn').addEventListener('click', () => this._toggleSpeaker());
     $('leave-btn').addEventListener('click',   () => this._leaveRoom());
     $('copy-btn').addEventListener('click',    () => this._copyRoomCode());
+    $('chat-btn').addEventListener('click',    () => this._toggleChat());
+    $('chat-send-btn').addEventListener('click', () => this._sendChat());
+    $('chat-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') this._sendChat();
+    });
   }
 
   // ── WebSocket connection ───────────────────────────────────────────────
@@ -139,6 +146,10 @@ class PhoneConf {
       case 'peer-left':
         this._removePeer(msg.peerId);
         toast('A participant left the call.');
+        break;
+
+      case 'chat':
+        this._addChatMessage(msg.name, msg.text, false);
         break;
 
       case 'error':
@@ -482,6 +493,67 @@ class PhoneConf {
     }, 1000);
   }
 
+  // ── Chat ───────────────────────────────────────────────────────────────
+
+  _toggleChat() {
+    this._chatOpen = !this._chatOpen;
+    $('chat-panel').classList.toggle('hidden', !this._chatOpen);
+    $('participants-section').classList.toggle('hidden', this._chatOpen);
+    $('chat-btn').dataset.active = this._chatOpen ? 'true' : 'false';
+    if (this._chatOpen) {
+      this._unreadCnt = 0;
+      $('chat-badge').classList.add('hidden');
+      const msgs = $('chat-messages');
+      msgs.scrollTop = msgs.scrollHeight;
+      $('chat-input').focus();
+    }
+  }
+
+  _sendChat() {
+    const text = $('chat-input').value.trim();
+    if (!text || !this.roomId) return;
+    $('chat-input').value = '';
+    this._addChatMessage(this.myName || 'You', text, true);
+    this._send({ type: 'chat', text });
+  }
+
+  _addChatMessage(name, text, isLocal) {
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const wrap = document.createElement('div');
+    wrap.className = `chat-msg ${isLocal ? 'chat-msg-local' : 'chat-msg-remote'}`;
+
+    if (!isLocal) {
+      const sender = document.createElement('div');
+      sender.className = 'chat-sender';
+      sender.textContent = name;
+      wrap.appendChild(sender);
+    }
+
+    const bubble = document.createElement('div');
+    bubble.className = 'chat-bubble';
+    bubble.textContent = text;
+    wrap.appendChild(bubble);
+
+    const meta = document.createElement('div');
+    meta.className = 'chat-meta';
+    meta.textContent = isLocal ? `You · ${time}` : time;
+    wrap.appendChild(meta);
+
+    const msgs = $('chat-messages');
+    msgs.appendChild(wrap);
+    msgs.scrollTop = msgs.scrollHeight;
+
+    if (!isLocal) {
+      if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+      if (!this._chatOpen) {
+        this._unreadCnt++;
+        const badge = $('chat-badge');
+        badge.textContent = this._unreadCnt > 9 ? '9+' : String(this._unreadCnt);
+        badge.classList.remove('hidden');
+      }
+    }
+  }
+
   // ── Screen switching ───────────────────────────────────────────────────
 
   _showCallScreen() {
@@ -489,6 +561,14 @@ class PhoneConf {
     $('call-screen').classList.add('active');
     $('room-code-display').textContent = this.roomId;
     $('participants-list').innerHTML = '';
+    // Reset chat state for new call
+    this._chatOpen  = false;
+    this._unreadCnt = 0;
+    $('chat-messages').innerHTML = '';
+    $('chat-panel').classList.add('hidden');
+    $('participants-section').classList.remove('hidden');
+    $('chat-btn').dataset.active = 'false';
+    $('chat-badge').classList.add('hidden');
     this._addParticipantCard(this.peerId, true, this.myName || 'You');
     this._startTimer();
     this._startVAD();

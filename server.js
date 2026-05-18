@@ -124,6 +124,16 @@ function generateRoomId() {
           break;
         }
 
+        case 'chat': {
+          if (!currentRoom) return;
+          broadcast(currentRoom, {
+            type: 'chat',
+            name: currentName,
+            text: String(msg.text || '').slice(0, 500),
+          }, currentPeer);
+          break;
+        }
+
         // WebRTC signaling — forward to target peer
         case 'offer':
         case 'answer':
