@@ -49,10 +49,11 @@ class PhoneConf {
     this.audioEls = new Map();
     // peerId → AnalyserNode  (for VAD)
     this.analysers = new Map();
+    // peerId → MediaStreamAudioSourceNode
+    this.audioSourceNodes = new Map();
 
     this.isMuted   = false;
     this.isSpeaker = true;   // true = loudspeaker, false = earpiece/headset
-    this.outputDeviceId = 'default';
 
     this._timerInterval = null;
     this._timerStart    = null;
@@ -246,26 +247,32 @@ class PhoneConf {
     if (!audio) {
       audio = new Audio();
       audio.autoplay = true;
-      document.body.appendChild(audio);   // must be in DOM for setSinkId
+      document.body.appendChild(audio);
       this.audioEls.set(peerId, audio);
     }
     audio.srcObject = stream;
-    this._applySinkId(audio);
 
-    // VAD analyser for remote peer
     if (!this.audioCtx) this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const src = this.audioCtx.createMediaStreamSource(stream);
     const analyser = this.audioCtx.createAnalyser();
     analyser.fftSize = 256;
     src.connect(analyser);
-    // Also route to output
-    src.connect(this.audioCtx.destination);
     this.analysers.set(peerId, analyser);
+    this.audioSourceNodes.set(peerId, src);
+
+    // Route to speaker or earpiece based on current mode
+    this._applyAudioRouting(audio, src);
   }
 
-  _applySinkId(audio) {
-    if (typeof audio.setSinkId === 'function' && this.outputDeviceId) {
-      audio.setSinkId(this.outputDeviceId).catch(() => {});
+  // Speaker mode:  AudioContext → destination  (loudspeaker on Android/iOS)
+  // Earpiece mode: <audio> element srcObject    (voice-call routing = earpiece on mobile)
+  _applyAudioRouting(audio, src) {
+    if (this.isSpeaker) {
+      audio.muted = true;
+      try { src.connect(this.audioCtx.destination); } catch {}
+    } else {
+      try { src.disconnect(this.audioCtx.destination); } catch {}
+      audio.muted = false;
     }
   }
 
@@ -302,32 +309,8 @@ class PhoneConf {
     }
   }
 
-  async _toggleSpeaker() {
+  _toggleSpeaker() {
     this.isSpeaker = !this.isSpeaker;
-
-    // Try to pick the right output device
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const outputs = devices.filter(d => d.kind === 'audiooutput');
-
-      if (this.isSpeaker) {
-        const spk = outputs.find(d =>
-          /speaker|loud/i.test(d.label)
-        );
-        this.outputDeviceId = spk ? spk.deviceId : 'default';
-      } else {
-        // Phone/earpiece mode
-        const ear = outputs.find(d =>
-          /earpiece|receiver|ear\b/i.test(d.label)
-        );
-        this.outputDeviceId = ear ? ear.deviceId : 'default';
-      }
-    } catch {
-      this.outputDeviceId = 'default';
-    }
-
-    // Apply to all active audio elements
-    this.audioEls.forEach(audio => this._applySinkId(audio));
 
     const btn   = $('speaker-btn');
     const label = $('speaker-label');
@@ -350,6 +333,12 @@ class PhoneConf {
           <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>
         </svg>`;
     }
+
+    // Switch routing for all active peer streams
+    this.audioEls.forEach((audio, peerId) => {
+      const src = this.audioSourceNodes.get(peerId);
+      if (src) this._applyAudioRouting(audio, src);
+    });
     toast(this.isSpeaker ? 'Switched to Speaker' : 'Switched to Earpiece');
   }
 
@@ -368,6 +357,7 @@ class PhoneConf {
     });
     this.audioEls.clear();
     this.analysers.clear();
+    this.audioSourceNodes.clear();
 
     // Stop microphone
     if (this.localStream) {
@@ -444,6 +434,7 @@ class PhoneConf {
     if (audio) { audio.srcObject = null; audio.remove(); this.audioEls.delete(peerId); }
 
     this.analysers.delete(peerId);
+    this.audioSourceNodes.delete(peerId);
     document.getElementById(`peer-${peerId}`)?.remove();
     this._updateCount();
   }

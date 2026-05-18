@@ -33,6 +33,7 @@ html, body {
   align-items: center;
   justify-content: center;
   height: 100vh;
+  height: 100dvh; /* shrinks when mobile browser chrome is visible */
   padding: 24px 16px;
   animation: fadeIn .25s ease;
 }
@@ -93,9 +94,7 @@ html, body {
   background: var(--surface2);
   color: var(--text);
   border: 1px solid var(--border);
-  width: auto;
   padding: 14px 22px;
-  white-space: nowrap;
 }
 .btn-secondary:hover { background: var(--border); }
 
@@ -114,7 +113,7 @@ html, body {
   background: var(--border);
 }
 
-.join-row { display: flex; gap: 10px; }
+.join-row { display: flex; flex-direction: column; gap: 10px; }
 
 .room-input {
   flex: 1;
@@ -214,6 +213,7 @@ html, body {
 /* ── Participants ── */
 .participants-section {
   flex: 1;
+  min-height: 0; /* allows flex child to shrink below content size */
   width: 100%;
   overflow-y: auto;
   padding: 20px 16px 0;
