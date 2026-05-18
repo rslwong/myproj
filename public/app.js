@@ -56,7 +56,7 @@ class PhoneConf {
     this._chatOpen  = false;
     this._unreadCnt = 0;
     this.isMuted   = false;
-    this.isSpeaker = true;   // true = loudspeaker, false = earpiece/headset
+    this.isSilent  = false;
 
     this._timerInterval = null;
     this._timerStart    = null;
@@ -79,7 +79,7 @@ class PhoneConf {
     });
 
     $('mute-btn').addEventListener('click',    () => this._toggleMute());
-    $('speaker-btn').addEventListener('click', () => this._toggleSpeaker());
+    $('speaker-btn').addEventListener('click', () => this._toggleSilent());
     $('leave-btn').addEventListener('click',   () => this._leaveRoom());
     $('copy-btn').addEventListener('click',    () => this._copyRoomCode());
     $('chat-btn').addEventListener('click',    () => this._toggleChat());
@@ -275,15 +275,12 @@ class PhoneConf {
     this._applyAudioRouting(audio, src);
   }
 
-  // Speaker mode:  AudioContext → destination  (loudspeaker on Android/iOS)
-  // Earpiece mode: <audio> element srcObject    (voice-call routing = earpiece on mobile)
   _applyAudioRouting(audio, src) {
-    if (this.isSpeaker) {
-      audio.muted = true;
-      try { src.connect(this.audioCtx.destination); } catch {}
-    } else {
+    audio.muted = true; // always route through AudioContext, never the audio element
+    if (this.isSilent) {
       try { src.disconnect(this.audioCtx.destination); } catch {}
-      audio.muted = false;
+    } else {
+      try { src.connect(this.audioCtx.destination); } catch {}
     }
   }
 
@@ -320,37 +317,37 @@ class PhoneConf {
     }
   }
 
-  _toggleSpeaker() {
-    this.isSpeaker = !this.isSpeaker;
+  _toggleSilent() {
+    this.isSilent = !this.isSilent;
 
     const btn   = $('speaker-btn');
     const label = $('speaker-label');
     const ico   = $('speaker-ico');
 
-    if (this.isSpeaker) {
-      btn.dataset.active = 'true';
-      label.textContent = 'Speaker';
+    if (this.isSilent) {
+      btn.classList.add('muted');
+      label.textContent = 'Silent';
+      ico.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+          <line x1="23" y1="9" x2="17" y2="15"/>
+          <line x1="17" y1="9" x2="23" y2="15"/>
+        </svg>`;
+    } else {
+      btn.classList.remove('muted');
+      label.textContent = 'Sound';
       ico.innerHTML = `
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
           <path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14"/>
         </svg>`;
-    } else {
-      btn.dataset.active = 'false';
-      label.textContent = 'Earpiece';
-      ico.innerHTML = `
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M3 18v-6a9 9 0 0 1 18 0v6"/>
-          <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>
-        </svg>`;
     }
 
-    // Switch routing for all active peer streams
     this.audioEls.forEach((audio, peerId) => {
       const src = this.audioSourceNodes.get(peerId);
       if (src) this._applyAudioRouting(audio, src);
     });
-    toast(this.isSpeaker ? 'Switched to Speaker' : 'Switched to Earpiece');
+    toast(this.isSilent ? 'Sound off' : 'Sound on');
   }
 
   _leaveRoom() {
@@ -386,9 +383,9 @@ class PhoneConf {
       this.ws = null;
     }
 
-    this.isMuted   = false;
-    this.isSpeaker = true;
-    this.roomId    = null;
+    this.isMuted  = false;
+    this.isSilent = false;
+    this.roomId   = null;
     this._showLandingScreen();
   }
 
@@ -569,6 +566,13 @@ class PhoneConf {
     $('participants-section').classList.remove('hidden');
     $('chat-btn').dataset.active = 'false';
     $('chat-badge').classList.add('hidden');
+    $('speaker-btn').classList.remove('muted');
+    $('speaker-label').textContent = 'Sound';
+    $('speaker-ico').innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+        <path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14"/>
+      </svg>`;
     this._addParticipantCard(this.peerId, true, this.myName || 'You');
     this._startTimer();
     this._startVAD();
