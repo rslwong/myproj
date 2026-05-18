@@ -70,7 +70,7 @@ class PhoneConf {
       if (e.key === 'Enter') this._joinRoom();
     });
     $('room-code-input').addEventListener('input', (e) => {
-      e.target.value = e.target.value.toUpperCase();
+      e.target.value = e.target.value.replace(/\D/g, '').slice(0, 3);
       clearError();
     });
 
@@ -522,8 +522,8 @@ class PhoneConf {
   }
 
   async _joinRoom() {
-    const code = $('room-code-input').value.trim().toUpperCase();
-    if (code.length < 4) { showError('Enter a valid room code.'); return; }
+    const code = $('room-code-input').value.trim();
+    if (code.length !== 3) { showError('Enter a valid 3-digit room code.'); return; }
     try {
       await this._connect();
       this._send({ type: 'join-room', roomId: code, peerId: this.peerId });

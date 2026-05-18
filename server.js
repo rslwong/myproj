@@ -46,10 +46,7 @@ async function loadOrCreateCert() {
 const rooms = new Map();
 
 function generateRoomId() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let id = '';
-  for (let i = 0; i < 6; i++) id += chars[Math.floor(Math.random() * chars.length)];
-  return id;
+  return String(Math.floor(Math.random() * 900) + 100);
 }
 
 (async () => {
