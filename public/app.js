@@ -52,6 +52,7 @@ class PhoneConf {
     // peerId → MediaStreamAudioSourceNode
     this.audioSourceNodes = new Map();
 
+    this.myName    = '';
     this.isMuted   = false;
     this.isSpeaker = true;   // true = loudspeaker, false = earpiece/headset
 
@@ -114,14 +115,13 @@ class PhoneConf {
         this.roomId = msg.roomId;
         await this._startLocalStream();
         this._showCallScreen();
-        // Initiate connections to every peer already in the room
-        for (const peerId of msg.peers) {
-          await this._connectToPeer(peerId, true);
+        for (const { peerId, name } of msg.peers) {
+          await this._connectToPeer(peerId, true, name);
         }
         break;
 
       case 'peer-joined':
-        await this._connectToPeer(msg.peerId, false);
+        await this._connectToPeer(msg.peerId, false, msg.name);
         break;
 
       case 'offer':
@@ -205,8 +205,8 @@ class PhoneConf {
     return pc;
   }
 
-  async _connectToPeer(remotePeerId, weOffer) {
-    this._addParticipantCard(remotePeerId);
+  async _connectToPeer(remotePeerId, weOffer, name = null) {
+    this._addParticipantCard(remotePeerId, false, name);
     const pc = this._makePeerConnection(remotePeerId);
 
     if (weOffer) {
@@ -383,12 +383,14 @@ class PhoneConf {
 
   // ── Peer cards ─────────────────────────────────────────────────────────
 
-  _addParticipantCard(peerId, isLocal = false) {
+  _addParticipantCard(peerId, isLocal = false, name = null) {
     const domId = isLocal ? 'peer-local' : `peer-${peerId}`;
     if (document.getElementById(domId)) return;
 
-    const initials = isLocal ? 'ME' : peerId.slice(0, 2).toUpperCase();
-    const name     = isLocal ? 'You (me)' : `Peer ${peerId.slice(0, 4).toUpperCase()}`;
+    const displayName = name || (isLocal ? 'You' : `Peer ${peerId.slice(0, 4).toUpperCase()}`);
+    const initials    = displayName.slice(0, 2).toUpperCase();
+    // shadow `name` with displayName for the template below
+    name = displayName;
     const statusTxt = isLocal ? 'Speaking' : 'Connecting…';
     const statusCls = isLocal ? 'peer-status ok' : 'peer-status';
 
@@ -487,7 +489,7 @@ class PhoneConf {
     $('call-screen').classList.add('active');
     $('room-code-display').textContent = this.roomId;
     $('participants-list').innerHTML = '';
-    this._addParticipantCard(this.peerId, true);
+    this._addParticipantCard(this.peerId, true, this.myName || 'You');
     this._startTimer();
     this._startVAD();
   }
@@ -504,20 +506,26 @@ class PhoneConf {
   // ── Room actions ───────────────────────────────────────────────────────
 
   async _createRoom() {
+    const name = $('name-input').value.trim();
+    if (!name) { showError('Please enter your name.'); return; }
+    this.myName = name;
     try {
       await this._connect();
-      this._send({ type: 'create-room', peerId: this.peerId });
+      this._send({ type: 'create-room', peerId: this.peerId, name });
     } catch {
       showError('Could not connect to server. Is it running?');
     }
   }
 
   async _joinRoom() {
+    const name = $('name-input').value.trim();
+    if (!name) { showError('Please enter your name.'); return; }
     const code = $('room-code-input').value.trim();
     if (code.length !== 3) { showError('Enter a valid 3-digit room code.'); return; }
+    this.myName = name;
     try {
       await this._connect();
-      this._send({ type: 'join-room', roomId: code, peerId: this.peerId });
+      this._send({ type: 'join-room', roomId: code, peerId: this.peerId, name });
     } catch {
       showError('Could not connect to server. Is it running?');
     }

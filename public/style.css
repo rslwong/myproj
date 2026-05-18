@@ -133,6 +133,15 @@ html, body {
 .room-input:focus { border-color: var(--blue); }
 .room-input::placeholder { letter-spacing: 2px; font-weight: 400; color: var(--text-muted); font-size: 14px; }
 
+.name-input {
+  letter-spacing: normal;
+  text-transform: none;
+  font-size: 15px;
+  font-weight: 400;
+  text-align: left;
+}
+.name-input::placeholder { letter-spacing: normal; font-size: 15px; }
+
 .error-msg { color: var(--red); font-size: 13px; margin-top: 10px; text-align: center; }
 .hidden { display: none !important; }
 

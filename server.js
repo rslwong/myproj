@@ -74,14 +74,15 @@ function generateRoomId() {
   wss.on('connection', (ws) => {
     let currentRoom = null;
     let currentPeer = null;
+    let currentName = null;
 
     function broadcast(roomId, msg, excludePeer = null) {
       const room = rooms.get(roomId);
       if (!room) return;
       const data = JSON.stringify(msg);
-      for (const [pid, sock] of room) {
-        if (pid !== excludePeer && sock.readyState === WebSocket.OPEN) {
-          sock.send(data);
+      for (const [pid, peer] of room) {
+        if (pid !== excludePeer && peer.ws.readyState === WebSocket.OPEN) {
+          peer.ws.send(data);
         }
       }
     }
@@ -96,28 +97,30 @@ function generateRoomId() {
 
       switch (msg.type) {
         case 'create-room': {
-          let roomId;
-          do { roomId = generateRoomId(); } while (rooms.has(roomId));
+          let roomId = rooms.has('111') ? null : '111';
+          if (!roomId) do { roomId = generateRoomId(); } while (rooms.has(roomId));
           currentPeer = msg.peerId;
+          currentName = msg.name || 'Unknown';
           currentRoom = roomId;
-          rooms.set(roomId, new Map([[currentPeer, ws]]));
+          rooms.set(roomId, new Map([[currentPeer, { ws, name: currentName }]]));
           send({ type: 'room-created', roomId });
           break;
         }
 
         case 'join-room': {
-          const { roomId, peerId } = msg;
+          const { roomId, peerId, name } = msg;
           if (!rooms.has(roomId)) {
             send({ type: 'error', message: 'Room not found. Check the code and try again.' });
             return;
           }
           currentPeer = peerId;
+          currentName = name || 'Unknown';
           currentRoom = roomId;
           const room = rooms.get(roomId);
-          const existingPeers = Array.from(room.keys());
-          room.set(peerId, ws);
+          const existingPeers = Array.from(room.entries()).map(([pid, p]) => ({ peerId: pid, name: p.name }));
+          room.set(peerId, { ws, name: currentName });
           send({ type: 'room-joined', roomId, peers: existingPeers });
-          broadcast(roomId, { type: 'peer-joined', peerId }, peerId);
+          broadcast(roomId, { type: 'peer-joined', peerId, name: currentName }, peerId);
           break;
         }
 
@@ -128,9 +131,9 @@ function generateRoomId() {
           const { targetPeerId, ...rest } = msg;
           if (!currentRoom) return;
           const room = rooms.get(currentRoom);
-          const targetWs = room && room.get(targetPeerId);
-          if (targetWs && targetWs.readyState === WebSocket.OPEN) {
-            targetWs.send(JSON.stringify({ ...rest, fromPeerId: currentPeer }));
+          const target = room && room.get(targetPeerId);
+          if (target && target.ws.readyState === WebSocket.OPEN) {
+            target.ws.send(JSON.stringify({ ...rest, fromPeerId: currentPeer }));
           }
           break;
         }
