@@ -1,5 +1,10 @@
 'use strict';
 
+// iOS routes <audio>.srcObject WebRTC streams to the earpiece; AudioContext.destination
+// routes to the speaker. Android/desktop routes <audio> to the speaker natively.
+const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+               (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function uid() {
@@ -280,14 +285,20 @@ class PhoneConf {
   }
 
   _applyAudioRouting(audio, src) {
-    audio.muted = true; // always route through AudioContext, never the audio element
-    if (this.isSilent) {
-      try { src.disconnect(this.audioCtx.destination); } catch {}
+    if (IS_IOS) {
+      // iOS: <audio> goes to earpiece — use AudioContext.destination for the speaker
+      audio.muted = true;
+      if (this.isSilent) {
+        try { src.disconnect(this.audioCtx.destination); } catch {}
+      } else {
+        this.audioCtx.resume().catch(() => {});
+        try { src.connect(this.audioCtx.destination); } catch {}
+      }
     } else {
-      // resume() is idempotent — safe to call repeatedly; required on iOS
-      // because the context can be suspended between the tap and audio arriving
-      this.audioCtx.resume().catch(() => {});
-      try { src.connect(this.audioCtx.destination); } catch {}
+      // Android / desktop: <audio> element routes to the speaker natively.
+      // Keep it unmuted so the browser actively decodes the stream.
+      try { src.disconnect(this.audioCtx.destination); } catch {}
+      audio.muted = this.isSilent;
     }
   }
 
