@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, interactive-widget=resizes-visual">
   <title>PhoneConf</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -67,6 +67,14 @@
     </div>
 
     <div id="chat-panel" class="chat-panel hidden">
+      <div class="chat-panel-header">
+        <button id="chat-close-btn" class="icon-btn" aria-label="Close chat">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="20" height="20">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+        </button>
+        <span class="chat-panel-title">Chat</span>
+      </div>
       <div id="chat-messages" class="chat-messages"></div>
       <div class="chat-input-row">
         <input id="chat-input" class="chat-input-field" type="text"

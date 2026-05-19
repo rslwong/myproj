@@ -62,6 +62,8 @@ class PhoneConf {
     this._timerStart    = null;
     this._vadLoop       = null;
 
+    this._boundHandleKeyboard = this._handleKeyboard.bind(this);
+
     this._bindUI();
   }
 
@@ -82,8 +84,9 @@ class PhoneConf {
     $('speaker-btn').addEventListener('click', () => this._toggleSilent());
     $('leave-btn').addEventListener('click',   () => this._leaveRoom());
     $('copy-btn').addEventListener('click',    () => this._copyRoomCode());
-    $('chat-btn').addEventListener('click',    () => this._toggleChat());
-    $('chat-send-btn').addEventListener('click', () => this._sendChat());
+    $('chat-btn').addEventListener('click',       () => this._toggleChat());
+    $('chat-close-btn').addEventListener('click', () => this._toggleChat());
+    $('chat-send-btn').addEventListener('click',  () => this._sendChat());
     $('chat-input').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') this._sendChat();
     });
@@ -181,6 +184,7 @@ class PhoneConf {
 
   _setupLocalVAD() {
     if (!this.audioCtx) this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    this.audioCtx.resume().catch(() => {});
     const src = this.audioCtx.createMediaStreamSource(this.localStream);
     const analyser = this.audioCtx.createAnalyser();
     analyser.fftSize = 256;
@@ -280,6 +284,9 @@ class PhoneConf {
     if (this.isSilent) {
       try { src.disconnect(this.audioCtx.destination); } catch {}
     } else {
+      // resume() is idempotent — safe to call repeatedly; required on iOS
+      // because the context can be suspended between the tap and audio arriving
+      this.audioCtx.resume().catch(() => {});
       try { src.connect(this.audioCtx.destination); } catch {}
     }
   }
@@ -377,6 +384,9 @@ class PhoneConf {
       this.audioCtx.close().catch(() => {});
       this.audioCtx = null;
     }
+
+    window.visualViewport?.removeEventListener('resize', this._boundHandleKeyboard);
+    $('call-screen').style.transform = '';
 
     if (this.ws) {
       this.ws.close();
@@ -490,6 +500,21 @@ class PhoneConf {
     }, 1000);
   }
 
+  // ── Keyboard / viewport handling ───────────────────────────────────────
+
+  _handleKeyboard() {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    // How many px the keyboard is covering at the bottom of the layout viewport
+    const offset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+    $('call-screen').style.transform = offset > 0 ? `translateY(-${offset}px)` : '';
+    if (this._chatOpen && offset > 0) {
+      requestAnimationFrame(() => {
+        $('chat-messages').scrollTop = $('chat-messages').scrollHeight;
+      });
+    }
+  }
+
   // ── Chat ───────────────────────────────────────────────────────────────
 
   _toggleChat() {
@@ -576,6 +601,7 @@ class PhoneConf {
     this._addParticipantCard(this.peerId, true, this.myName || 'You');
     this._startTimer();
     this._startVAD();
+    window.visualViewport?.addEventListener('resize', this._boundHandleKeyboard);
   }
 
   _showLandingScreen() {
@@ -589,10 +615,19 @@ class PhoneConf {
 
   // ── Room actions ───────────────────────────────────────────────────────
 
+  _initAudioContext() {
+    // Must be called directly inside a tap handler so iOS grants audio permission
+    if (!this.audioCtx) {
+      this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    this.audioCtx.resume().catch(() => {});
+  }
+
   async _createRoom() {
     const name = $('name-input').value.trim();
     if (!name) { showError('Please enter your name.'); return; }
     this.myName = name;
+    this._initAudioContext(); // create while still inside the tap gesture
     try {
       await this._connect();
       this._send({ type: 'create-room', peerId: this.peerId, name });
@@ -607,6 +642,7 @@ class PhoneConf {
     const code = $('room-code-input').value.trim();
     if (code.length !== 3) { showError('Enter a valid 3-digit room code.'); return; }
     this.myName = name;
+    this._initAudioContext(); // create while still inside the tap gesture
     try {
       await this._connect();
       this._send({ type: 'join-room', roomId: code, peerId: this.peerId, name });
